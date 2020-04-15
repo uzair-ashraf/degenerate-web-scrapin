@@ -21,7 +21,11 @@ const cheerio = require('cheerio');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-async function mangaPandaDownloader(url) {
+const imagesToPdf = require("images-to-pdf")
+
+let imagesPathList = [];
+
+async function mangaPandaDownloader(url, pathName) {
   try {
     const baseUrl = 'http://www.mangapanda.com'
     const response = await fetch(url)
@@ -40,17 +44,25 @@ async function mangaPandaDownloader(url) {
       console.log(nextUrl)
       if(!nextUrl) {
         console.log('completed')
+        convertMangaToPDF(pathName)
         return;
       }
     }
     const pageUrl = $(imgContainer[0].children[pageIndex].children[0]).attr('src')
     const pageTitle = $(imgContainer[0].children[pageIndex].children[0]).attr('alt')
-    const pathName = new URL(url).pathname.split('/')[1]
+    // If the pathname is falsy it means we never had one and its the first time
+    // the function is called. So we can give it a pathname once instead of
+    // doing it every time, this also lets us pass it to the conversion function
+    if(!pathName) {
+      pathName = new URL(url).pathname.split('/')[1]
+    }
     if (!fs.existsSync(pathName)) {
       fs.mkdirSync(pathName);
     }
     const fileResponse = await fetch(pageUrl)
-    const fileStream = fs.createWriteStream(path.join(__dirname, `${pathName}/${pageTitle}.jpg`))
+    const filePath = path.join(__dirname, `${pathName}/${pageTitle}.jpg`)
+    imagesPathList.push(filePath);
+    const fileStream = fs.createWriteStream(filePath)
     await new Promise((resolve, reject) => {
       fileResponse.body.pipe(fileStream);
       fileResponse.body.on("error", err => {
@@ -62,10 +74,21 @@ async function mangaPandaDownloader(url) {
         resolve()
       })
     })
-    return mangaPandaDownloader(`${baseUrl}${nextUrl}`)
+    return mangaPandaDownloader(`${baseUrl}${nextUrl}`, pathName)
   } catch(err) {
     console.error(err)
   }
 }
+
+async function convertMangaToPDF(directory) {
+  try {
+    await imagesToPdf(imagesPathList, path.join(__dirname, `${directory}/${directory}.pdf`));
+    imagesPathList = [];
+    console.log("Pdf generated successfully")
+  } catch(err) {
+    console.error(err)
+  }
+}
+
 //Take the url of the first chapter of the manga
-mangaPandaDownloader('http://www.mangapanda.com/shokugeki-no-soma/1')
+mangaPandaDownloader('http://www.mangapanda.com/kitsune-no-oyome-chan/1', null)
